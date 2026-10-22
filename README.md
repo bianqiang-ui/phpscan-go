@@ -12,6 +12,11 @@
 **Author:** Bian Chengxu（边承旭） · <bianqiang@gmail.com> · https://www.spark8.xyz
 **Version:** 1.0.0 · **License:** MIT
 
+<p align="center">
+  <img src="docs/screenshot-main-zh.png" alt="PHPScan 主界面 / Main UI (中文)" width="880">
+  <br><sub>主界面（中文） · Main UI — all sample IPs in the screenshot are documentation placeholders (RFC 1918 / RFC 5737)</sub>
+</p>
+
 ---
 
 ## English
