@@ -1,0 +1,17 @@
+# Build output
+/dist/
+/build/
+phpscan
+phpscan.exe
+*.exe
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local scratch
+smoke.log
+page.html
+poll.json

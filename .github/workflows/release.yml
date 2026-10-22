@@ -1,0 +1,89 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            out: phpscan-windows-amd64.exe
+            ldflags: -s -w -H windowsgui   # GUI subsystem: no console window
+          - name: darwin-arm64
+            os: macos-latest
+            goos: darwin
+            goarch: arm64
+            out: phpscan-darwin-arm64
+            ldflags: -s -w
+          - name: darwin-amd64
+            os: macos-latest
+            goos: darwin
+            goarch: amd64
+            out: phpscan-darwin-amd64
+            ldflags: -s -w
+          - name: linux-amd64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            out: phpscan-linux-amd64
+            ldflags: -s -w
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # 注意：必须不低于 go.mod 中声明的版本，否则云端构建会因版本不足直接失败
+          go-version: "stable"
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -ldflags "${{ matrix.ldflags }}" -o ${{ matrix.out }} .
+
+      - name: Checksum
+        shell: bash
+        run: |
+          if [ -f "${{ matrix.out }}" ]; then
+            sha256sum "${{ matrix.out }}" > "${{ matrix.out }}.sha256" || \
+            shasum -a 256 "${{ matrix.out }}" > "${{ matrix.out }}.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phpscan-${{ matrix.name }}
+          path: |
+            ${{ matrix.out }}
+            ${{ matrix.out }}.sha256
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

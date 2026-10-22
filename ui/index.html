@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PHP 漏洞批量排查工具</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --line:#e4e7ec; --line2:#d0d5dd;
+  --txt:#1d2939; --txt2:#667085; --txt3:#98a2b3;
+  --vuln:#e74c3c; --safe:#27ae60; --unknown:#f39c12; --error:#7f8c8d;
+  --vuln-bg:#fdecea; --safe-bg:#e8f6ed; --unknown-bg:#fdf3e3; --error-bg:#f0f1f2;
+  --brand:#2563eb; --brand-dark:#1d4ed8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.6}
+.wrap{max-width:1180px;margin:0 auto;padding:20px}
+h1{font-size:19px;font-weight:600;margin:0}
+.sub{font-size:13px;color:var(--txt2);margin:2px 0 0}
+.head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.badge-local{font-size:12px;color:var(--txt2);background:#eef1f5;border:1px solid var(--line);
+  border-radius:999px;padding:3px 10px}
+.langbar{display:flex;gap:6px;align-items:center}
+.langbar button{padding:4px 12px;font-size:12.5px;border-radius:999px}
+.langbar button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .lab{font-size:13px;color:var(--txt2)}
+.card .num{font-size:26px;font-weight:600;margin-top:2px;line-height:1.2}
+.n-vuln{color:var(--vuln)} .n-safe{color:var(--safe)}
+.n-unknown{color:var(--unknown)} .n-error{color:var(--error)}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px;flex-wrap:wrap}
+.tab{background:none;border:none;padding:9px 16px;font-size:14px;color:var(--txt2);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
+.tab:hover{color:var(--txt)}
+.tab.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:500}
+.pane{display:none}
+.pane.on{display:block}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.panel h3{margin:0 0 12px;font-size:14px;font-weight:600}
+label{display:block;font-size:13px;color:var(--txt2);margin:0 0 5px}
+textarea,input{width:100%;font-family:inherit;font-size:13px;color:var(--txt);
+  border:1px solid var(--line2);border-radius:8px;padding:8px 10px;background:#fff}
+textarea{resize:vertical;line-height:1.5}
+textarea:focus,input:focus{outline:none;border-color:var(--brand)}
+.mono{font-family:Consolas,"SF Mono",Menlo,monospace;font-size:12.5px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.f{flex:1;min-width:120px}
+.f-sm{flex:0 0 110px}
+.f-md{flex:0 0 200px}
+
+button{font-family:inherit;font-size:13px;padding:8px 16px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line2);background:#fff;color:var(--txt)}
+button:hover{background:#f7f8fa}
+button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+button.primary:hover{background:var(--brand-dark)}
+button.danger{color:#b42318;border-color:#f2c1bb}
+button.danger:hover{background:#fef3f2}
+button:disabled{opacity:.5;cursor:not-allowed}
+.btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.status{margin-left:auto;font-size:13px;color:var(--txt2)}
+
+.bar{height:6px;background:#eceff3;border-radius:3px;overflow:hidden;margin:12px 0 6px}
+.bar>i{display:block;height:100%;width:0;background:var(--brand);border-radius:3px;transition:width .25s}
+
+.cred-list{list-style:none;margin:6px 0 0;padding:0;font-size:13px;color:var(--txt2)}
+.cred-list li{padding:3px 0}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#fafbfc;font-weight:600;color:var(--txt2);font-size:12.5px;position:sticky;top:0}
+td.ip{font-family:Consolas,Menlo,monospace}
+.tbl-wrap{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#fafbfc}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;white-space:nowrap}
+.p-vuln{background:var(--vuln-bg);color:var(--vuln)}
+.p-safe{background:var(--safe-bg);color:var(--safe)}
+.p-unknown{background:var(--unknown-bg);color:var(--unknown)}
+.p-error{background:var(--error-bg);color:var(--error)}
+
+#log{height:420px;overflow:auto;background:#1e2329;color:#d5dae1;border-radius:10px;padding:12px;
+  font-family:Consolas,"SF Mono",Menlo,monospace;font-size:12.5px;line-height:1.65;white-space:pre-wrap}
+#log .v{color:#ff8b7a} #log .s{color:#7ee0a4} #log .u{color:#ffc866} #log .e{color:#9aa4b0}
+
+.modal{position:absolute;inset:0;background:rgba(16,24,40,.55);display:none;
+  align-items:center;justify-content:center;padding:24px;z-index:50}
+.modal.on{display:flex}
+.modal-box{background:#fff;border-radius:12px;max-width:760px;width:100%;max-height:82vh;overflow:auto;padding:20px}
+.modal-box h3{margin:0 0 12px;font-size:15px}
+.modal-box pre{background:#f7f8fa;border:1px solid var(--line);border-radius:8px;padding:10px;
+  font-size:12.5px;white-space:pre-wrap;margin:0 0 10px;font-family:Consolas,Menlo,monospace}
+.close{margin-top:8px}
+.hint{font-size:12.5px;color:var(--txt3);margin-top:8px}
+.dl a{display:inline-block;margin-right:12px;color:var(--brand);font-size:13px}
+
+/* 关于页 */
+.about-desc{font-size:13.5px;color:var(--txt);margin:0 0 10px}
+.about-def{font-size:12.5px;color:var(--txt2);background:#f7f8fa;border-left:3px solid var(--brand);
+  border-radius:6px;padding:9px 12px;margin:0 0 16px}
+.about-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.about-tbl th{width:120px;text-align:left;font-weight:500;color:var(--txt2);
+  padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.about-tbl td{padding:8px 0;border-bottom:1px solid var(--line);word-break:break-all}
+.about-tbl a{color:var(--brand);text-decoration:none}
+.about-tbl a:hover{text-decoration:underline}
+.about-tbl tr:last-child th,.about-tbl tr:last-child td{border-bottom:none}
+.about-tbl .zh{color:var(--txt2);font-size:12.5px}
+
+/* 页脚署名 */
+.foot{text-align:center;font-size:12.5px;color:var(--txt3);padding:20px 0 28px;line-height:1.9}
+.foot a{color:var(--txt2);text-decoration:none}
+.foot a:hover{color:var(--brand);text-decoration:underline}
+.foot .nm{color:var(--txt2);font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <h1 data-i18n="title">PHP 漏洞批量排查工具</h1>
+      <p class="sub">php2shell · CVE-2026-109618 / CVE-2026-109619</p>
+    </div>
+    <div class="langbar">
+      <span class="badge-local" data-i18n="badgeLocal">本机服务 127.0.0.1 · 数据不出本机</span>
+      <button id="langZH" class="on">中文</button>
+      <button id="langEN">EN</button>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="lab" data-i18n="c.vuln">中招</div><div class="num n-vuln" id="c-vuln">0</div></div>
+    <div class="card"><div class="lab" data-i18n="c.safe">安全</div><div class="num n-safe" id="c-safe">0</div></div>
+    <div class="card"><div class="lab" data-i18n="c.unknown">需核实</div><div class="num n-unknown" id="c-unknown">0</div></div>
+    <div class="card"><div class="lab" data-i18n="c.error">失败 / 不通</div><div class="num n-error" id="c-error">0</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" data-p="scan" data-i18n="tab.scan">扫描</button>
+    <button class="tab" data-p="script" data-i18n="tab.script">探测脚本</button>
+    <button class="tab" data-p="log" data-i18n="tab.log">实时日志</button>
+    <button class="tab" data-p="result" data-i18n="tab.result">扫描结果</button>
+    <button class="tab" data-p="about" data-i18n="tab.about">关于</button>
+  </div>
+
+  <!-- 扫描 -->
+  <div class="pane on" id="p-scan">
+    <div class="panel">
+      <h3 data-i18n="sec.target">目标与凭据</h3>
+      <label data-i18n="lb.targets">IP / CIDR / 区间（每行一个，# 注释）</label>
+      <textarea id="targets" class="mono" rows="5" placeholder="192.168.1.0/24&#10;10.0.0.1-50&#10;# 203.0.113.7"></textarea>
+
+      <div class="row" style="margin-top:12px">
+        <div class="f-sm"><label data-i18n="lb.user">用户名</label><input id="cuser" value="root"></div>
+        <div class="f-md"><label data-i18n="lb.pass">密码</label><input id="cpass" type="password"></div>
+        <div><button id="addCred" data-i18n="btn.addCred">添加凭据组</button></div>
+        <div><button id="clrCred" data-i18n="btn.clear">清空</button></div>
+      </div>
+      <ul class="cred-list" id="credList"></ul>
+
+      <div class="row" style="margin-top:12px">
+        <div class="f"><label data-i18n="lb.ports">端口（逗号分隔）</label><input id="ports" value="22,2222,36000"></div>
+        <div class="f-sm"><label data-i18n="lb.threads">并发数</label><input id="threads" value="12"></div>
+        <div class="f-md"><label data-i18n="lb.jump">跳板机 user@host:port（可选）</label><input id="jump" placeholder="root@1.2.3.4:22"></div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="f"><label data-i18n="lb.outdir">报告保存目录（留空则存到 用户目录/php_scan_reports）</label><input id="outdir"></div>
+      </div>
+
+      <div class="btns">
+        <button class="primary" id="btnStart" data-i18n="btn.start">开始扫描</button>
+        <button id="btnStop" data-i18n="btn.stop" disabled>停止</button>
+        <button id="btnExport" data-i18n="btn.export">导出报告</button>
+        <button class="danger" id="btnQuit" data-i18n="btn.quit">退出程序</button>
+        <span class="status" id="status" data-i18n="st.ready">就绪</span>
+      </div>
+      <div class="bar"><i id="barFill"></i></div>
+      <div class="hint" id="progText"></div>
+      <div class="dl" id="dlLinks"></div>
+    </div>
+  </div>
+
+  <!-- 探测脚本 -->
+  <div class="pane" id="p-script">
+    <div class="panel">
+      <h3 data-i18n="sec.script">探测脚本（可在线修改，留空则用内置默认；远端通过 stdin 执行，不落盘）</h3>
+      <textarea id="script" class="mono" rows="18"></textarea>
+    </div>
+  </div>
+
+  <!-- 实时日志 -->
+  <div class="pane" id="p-log">
+    <div class="panel"><div id="log"></div></div>
+  </div>
+
+  <!-- 扫描结果 -->
+  <div class="pane" id="p-result">
+    <div class="panel">
+      <div class="btns" style="margin-bottom:10px">
+        <button id="btnExport2" data-i18n="btn.export">导出报告</button>
+        <button id="btnClear" data-i18n="btn.clearResult">清空结果</button>
+        <span class="status" id="status2"></span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:150px" data-i18n="col.ip">IP</th>
+            <th style="width:110px" data-i18n="col.status">判定</th>
+            <th style="width:70px" data-i18n="col.port">端口</th>
+            <th style="width:80px" data-i18n="col.user">用户</th>
+            <th data-i18n="col.ver">版本摘要</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="hint" data-i18n="hint.detail">点击任意行可查看该服务器完整明细与修复建议。</div>
+      <div class="dl" id="dlLinks2"></div>
+    </div>
+  </div>
+
+  <!-- 关于 -->
+  <div class="pane" id="p-about">
+    <div class="panel">
+      <h3 data-i18n="about.title">关于本工具</h3>
+      <p class="about-desc" data-i18n="about.desc"></p>
+      <p class="about-def" data-i18n="about.defensive"></p>
+      <table class="about-tbl">
+        <tr><th data-i18n="about.author"></th><td><span id="abAuthor"></span> <span class="zh" id="abAuthorC"></span></td></tr>
+        <tr><th data-i18n="about.contact"></th><td><a id="abEmail" href="#"></a></td></tr>
+        <tr><th data-i18n="about.site"></th><td><a id="abSite" href="#" target="_blank" rel="noopener"></a></td></tr>
+        <tr><th data-i18n="about.repo"></th><td><a id="abRepo" href="#" target="_blank" rel="noopener"></a></td></tr>
+        <tr><th data-i18n="about.version"></th><td id="abVer"></td></tr>
+        <tr><th data-i18n="about.license"></th><td id="abLicense"></td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<footer class="foot">
+  <div><span id="footApp"></span> · <span class="nm" id="footAuthor"></span></div>
+  <div><a id="footEmail" href="#"></a> · <a id="footSite" href="#" target="_blank" rel="noopener"></a></div>
+</footer>
+
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <h3 id="mTitle">详情</h3>
+    <div id="mBody"></div>
+    <button class="close" id="mClose" data-i18n="btn.close">关闭</button>
+  </div>
+</div>
+
+<script>
+/* ---------------- 国际化 ---------------- */
+const I18N = {
+  zh: {
+    title: 'PHP 漏洞批量排查工具',
+    badgeLocal: '本机服务 127.0.0.1 · 数据不出本机',
+    'c.vuln': '中招', 'c.safe': '安全', 'c.unknown': '需核实', 'c.error': '失败 / 不通',
+    'tab.scan': '扫描', 'tab.script': '探测脚本', 'tab.log': '实时日志', 'tab.result': '扫描结果',
+    'tab.about': '关于',
+    'sec.target': '目标与凭据', 'sec.script': '探测脚本（可在线修改，留空则用内置默认；远端通过 stdin 执行，不落盘）',
+    'lb.targets': 'IP / CIDR / 区间（每行一个，# 注释）',
+    'lb.user': '用户名', 'lb.pass': '密码',
+    'lb.ports': '端口（逗号分隔）', 'lb.threads': '并发数',
+    'lb.jump': '跳板机 user@host:port（可选）',
+    'lb.outdir': '报告保存目录（留空则存到 用户目录/php_scan_reports）',
+    'btn.addCred': '添加凭据组', 'btn.clear': '清空', 'btn.clearResult': '清空结果',
+    'btn.start': '开始扫描', 'btn.stop': '停止', 'btn.export': '导出报告',
+    'btn.quit': '退出程序', 'btn.close': '关闭',
+    'st.ready': '就绪', 'st.scanning': '扫描中…', 'st.stopping': '已请求停止…',
+    'st.done': '扫描结束 — 可导出报告',
+    'st.vuln': '中招', 'st.safe': '安全', 'st.unknown': '需核实',
+    'st.error': '失败', 'st.stopped': '已停止',
+    progress: d => `已扫描 ${d.done} / ${d.total} 台`,
+    'col.ip': 'IP', 'col.status': '判定', 'col.port': '端口', 'col.user': '用户', 'col.ver': '版本摘要',
+    'hint.detail': '点击任意行可查看该服务器完整明细与修复建议。',
+    'dl.saved': '报告已保存到：',
+    'd.title': '详情 —',
+    'd.php': 'PHP 版本明细', 'd.docker': '容器 PHP', 'd.vhost': 'vhost 所用 PHP',
+    'd.pkg': '软件包', 'd.note': '备注', 'd.fix': '修复建议',
+    'al.noCred': '请先添加至少一组凭据',
+    'al.exported': '已导出到：',
+    'al.fail': '导出失败',
+    'al.runningClear': '扫描进行中，无法清空',
+    'al.quit': '确定退出程序？未导出的结果将丢失。',
+    sapi: `PHP 同一版本通常包含三个不同用途的二进制（都可能是中招版本，需分别升级）：
+  1) sbin/php-fpm  →  fpm-fcgi（PHP-FPM / FastCGI Process Manager）：
+     通过 FastCGI 给 Nginx / Apache(mod_proxy_fcgi) 提供 PHP 服务，是线上网站的主流运行方式，修复重点。
+  2) bin/php-cgi  →  cgi-fcgi（CGI / FastCGI 网关）：处理 CGI 或 FastCGI 请求，常见于旧式 CGI 部署。
+  3) bin/php  →  cli（命令行）：终端直接执行的 PHP，如 cron 计划任务、后台脚本。
+说明：三者版本号相同（例如都是 8.2.28），但作用不同；只升级其中一个，另两个仍是中招版本。`,
+    fix: `升级到安全版本：
+  PHP 8.5 → 8.5.12+   8.4 → 8.4.27+   8.3 → 8.3.36+   8.2 → 8.2.35+
+  8.1 及更早为 EOL 无官方补丁，建议整条大版本升级（如 8.2.35+）。
+  容器中的 PHP 同样需更新镜像 / 重装。`,
+    'about.title': '关于本工具',
+    'about.desc': '通过 SSH 批量清点服务器上的 PHP 版本，内置 php2shell（CVE-2026-109618 / CVE-2026-109619）检测规则。',
+    'about.defensive': '仅供授权环境下的自查与补丁，属防御性排查。',
+    'about.author': '作者', 'about.contact': '联系', 'about.site': '网站',
+    'about.repo': '源码仓库', 'about.version': '版本', 'about.license': '许可协议'
+  },
+  en: {
+    title: 'PHP Vulnerability Bulk Scanner',
+    badgeLocal: 'Local service on 127.0.0.1 · data never leaves this machine',
+    'c.vuln': 'Vulnerable', 'c.safe': 'Safe', 'c.unknown': 'Review', 'c.error': 'Failed / unreachable',
+    'tab.scan': 'Scan', 'tab.script': 'Probe script', 'tab.log': 'Live log', 'tab.result': 'Results',
+    'tab.about': 'About',
+    'sec.target': 'Targets & credentials',
+    'sec.script': 'Probe script (editable; blank = built-in default; piped to the remote host over stdin, never written to disk)',
+    'lb.targets': 'IP / CIDR / range (one per line, # for comments)',
+    'lb.user': 'Username', 'lb.pass': 'Password',
+    'lb.ports': 'Ports (comma separated)', 'lb.threads': 'Concurrency',
+    'lb.jump': 'Bastion host user@host:port (optional)',
+    'lb.outdir': 'Report folder (blank = ~/php_scan_reports)',
+    'btn.addCred': 'Add credential', 'btn.clear': 'Clear', 'btn.clearResult': 'Clear results',
+    'btn.start': 'Start scan', 'btn.stop': 'Stop', 'btn.export': 'Export report',
+    'btn.quit': 'Quit', 'btn.close': 'Close',
+    'st.ready': 'Ready', 'st.scanning': 'Scanning…', 'st.stopping': 'Stop requested…',
+    'st.done': 'Scan finished — ready to export',
+    'st.vuln': 'Vulnerable', 'st.safe': 'Safe', 'st.unknown': 'Review',
+    'st.error': 'Failed', 'st.stopped': 'Stopped',
+    progress: d => `Scanned ${d.done} / ${d.total}`,
+    'col.ip': 'IP', 'col.status': 'Status', 'col.port': 'Port',
+    'col.user': 'User', 'col.ver': 'Versions found',
+    'hint.detail': 'Click any row for full details and remediation advice.',
+    'dl.saved': 'Reports saved to: ',
+    'd.title': 'Details —',
+    'd.php': 'PHP versions found', 'd.docker': 'Container PHP', 'd.vhost': 'PHP used by vhosts',
+    'd.pkg': 'Packages', 'd.note': 'Notes', 'd.fix': 'Remediation',
+    'al.noCred': 'Add at least one credential set first',
+    'al.exported': 'Exported to: ',
+    'al.fail': 'Export failed',
+    'al.runningClear': 'Cannot clear results while a scan is running',
+    'al.quit': 'Quit the application? Unexported results will be lost.',
+    sapi: `A single PHP installation usually ships three binaries for different SAPIs
+(all of them may be vulnerable, and each one needs its own upgrade):
+  1) sbin/php-fpm  ->  fpm-fcgi (PHP-FPM / FastCGI Process Manager):
+     Serves PHP to Nginx or Apache (mod_proxy_fcgi) over FastCGI. This is how
+     most production sites run PHP, and it is the priority for patching.
+  2) bin/php-cgi  ->  cgi-fcgi (CGI / FastCGI gateway): handles CGI or FastCGI
+     requests; typical of legacy CGI deployments.
+  3) bin/php  ->  cli (Command Line Interface): PHP run straight from a shell,
+     e.g. cron jobs and background scripts.
+Note: all three report the same version string (e.g. 8.2.28) but serve different
+roles. Upgrading only one of them leaves the other two vulnerable.`,
+    fix: `Upgrade to a fixed release:
+  PHP 8.5 -> 8.5.12+   8.4 -> 8.4.27+   8.3 -> 8.3.36+   8.2 -> 8.2.35+
+  PHP 8.1 and older are end-of-life with no official patch — plan a full
+  branch upgrade (e.g. to 8.2.35+).
+  PHP inside containers must be updated by rebuilding or pulling a new image.`,
+    'about.title': 'About',
+    'about.desc': 'Batch SSH inventory of PHP versions across servers, with a built-in php2shell (CVE-2026-109618 / CVE-2026-109619) rule.',
+    'about.defensive': 'For authorised self-assessment and patching only — a defensive audit tool.',
+    'about.author': 'Author', 'about.contact': 'Contact', 'about.site': 'Website',
+    'about.repo': 'Repository', 'about.version': 'Version', 'about.license': 'License'
+  }
+};
+
+let LANG = 'zh';
+try {
+  const saved = localStorage.getItem('phpscan.lang');
+  if (saved === 'zh' || saved === 'en') LANG = saved;
+  else if (navigator.language && navigator.language.toLowerCase().indexOf('zh') === 0) LANG = 'zh';
+  else LANG = 'en';
+} catch (e) { LANG = 'zh'; }
+
+function t(k) { return (I18N[LANG] && I18N[LANG][k] !== undefined) ? I18N[LANG][k] : k; }
+
+const $ = id => document.getElementById(id);
+let creds = [], records = [], since = 0, running = false, lastProgress = { done: 0, total: 0 };
+
+document.querySelectorAll('.tab').forEach(tb => tb.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(x => x.classList.remove('on'));
+  tb.classList.add('on');
+  $('p-' + tb.dataset.p).classList.add('on');
+});
+
+function applyLang() {
+  document.documentElement.lang = (LANG === 'zh') ? 'zh-CN' : 'en';
+  document.title = t('title');
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const v = t(el.dataset.i18n);
+    if (typeof v === 'string') {
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = v;
+      else el.textContent = v;
+    }
+  });
+  $('langZH').classList.toggle('on', LANG === 'zh');
+  $('langEN').classList.toggle('on', LANG === 'en');
+  $('outdir').placeholder = (LANG === 'zh') ? '留空使用默认目录' : 'blank for default folder';
+  if (!running) setStatus(t('st.ready'));
+  if (lastProgress.total) setProgress(lastProgress.done, lastProgress.total);
+  renderRows();
+}
+
+function setLang(l) {
+  LANG = l;
+  try { localStorage.setItem('phpscan.lang', l); } catch (e) {}
+  applyLang();
+}
+$('langZH').onclick = () => setLang('zh');
+$('langEN').onclick = () => setLang('en');
+
+$('addCred').onclick = () => {
+  const u = $('cuser').value.trim(), p = $('cpass').value;
+  if (!u) return;
+  creds.push({ user: u, pass: p });
+  const li = document.createElement('li');
+  li.textContent = u + ' / ' + '*'.repeat(p.length);
+  $('credList').appendChild(li);
+  $('cpass').value = '';
+};
+$('clrCred').onclick = () => { creds = []; $('credList').innerHTML = ''; };
+
+fetch('/api/script').then(r => r.json()).then(d => { $('script').value = d.script; });
+
+/* 关于：作者与版本信息取自后端，保证界面署名与二进制内的一致 */
+fetch('/api/about').then(r => r.json()).then(a => {
+  const site = (a.site || '').replace(/^https?:\/\//, '');
+  const name = (a.author || '') + (a.authorC ? '（' + a.authorC + '）' : '');
+  $('abAuthor').textContent = a.author || '';
+  $('abAuthorC').textContent = a.authorC ? '（' + a.authorC + '）' : '';
+  $('abEmail').textContent = a.email || '';  $('abEmail').href = 'mailto:' + (a.email || '');
+  $('abSite').textContent = site;            $('abSite').href = a.site || '#';
+  $('abRepo').textContent = a.repo || '';    $('abRepo').href = a.repo || '#';
+  $('abVer').textContent = a.version || '';
+  $('abLicense').textContent = a.license || '';
+  $('footApp').textContent = (a.app || '') + ' ' + (a.version || '');
+  $('footAuthor').textContent = name;
+  $('footEmail').textContent = a.email || ''; $('footEmail').href = 'mailto:' + (a.email || '');
+  $('footSite').textContent = site;          $('footSite').href = a.site || '#';
+}).catch(() => {});
+
+function setStatus(s) { $('status').textContent = s; $('status2').textContent = s; }
+function setProgress(done, total) {
+  lastProgress = { done: done, total: total };
+  const pct = total ? Math.round(done / total * 100) : 0;
+  $('barFill').style.width = pct + '%';
+  $('progText').textContent = t('progress')({ done: done, total: total });
+}
+function updateCounts(c) {
+  $('c-vuln').textContent = c.vuln || 0;
+  $('c-safe').textContent = c.safe || 0;
+  $('c-unknown').textContent = c.unknown || 0;
+  $('c-error').textContent = (c.error || 0) + (c.stopped || 0);
+}
+
+function clsFor(s) { return (s === 'stopped') ? 'p-error' : 'p-' + (s || 'error'); }
+function nameFor(s) { return t('st.' + (s || 'error')); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* 结果行：保存 records，切换语言时整体重绘 */
+function renderRows() {
+  const tb = $('tbody');
+  tb.innerHTML = '';
+  records.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="ip">' + esc(r.ip) + '</td>' +
+      '<td><span class="pill ' + clsFor(r.status) + '">' + nameFor(r.status) + '</span></td>' +
+      '<td>' + esc(r.port) + '</td><td>' + esc(r.user) + '</td><td>' + esc(r.ver) + '</td>';
+    tr.onclick = () => showDetail(r);
+    tb.appendChild(tr);
+  });
+}
+function addRow(r) { records.push(r); renderRows(); }
+
+function showDetail(r) {
+  let h = '<div><strong>' + t('col.ip') + '：</strong>' + esc(r.ip) +
+    '　<strong>' + t('col.port') + '：</strong>' + esc(r.port) +
+    '　<strong>' + t('col.user') + '：</strong>' + esc(r.user) +
+    '　<strong>' + t('col.status') + '：</strong>' + nameFor(r.status) + '</div>';
+  const block = (title, v) => v ? '<div style="margin-top:10px"><strong>' + title +
+    '</strong></div><pre>' + esc(v) + '</pre>' : '';
+  h += block(t('d.php'), r.php) + block(t('d.docker'), r.docker) +
+       block(t('d.vhost'), r.vhost) + block(t('d.pkg'), r.pkg) + block(t('d.note'), r.detail);
+  if (r.status === 'vuln') {
+    h += '<div style="margin-top:10px"><strong>' + t('d.fix') + '</strong></div><pre>' + esc(t('fix')) + '</pre>';
+    h += '<div style="margin-top:10px"><strong>' + t('d.php') + ' — SAPI</strong></div><pre>' + esc(t('sapi')) + '</pre>';
+  }
+  $('mTitle').textContent = t('d.title') + ' ' + r.ip;
+  $('mBody').innerHTML = h;
+  $('modal').classList.add('on');
+}
+$('mClose').onclick = () => $('modal').classList.remove('on');
+$('modal').onclick = e => { if (e.target.id === 'modal') $('modal').classList.remove('on'); };
+
+function appendLog(msg) {
+  const el = $('log');
+  const div = document.createElement('div');
+  div.textContent = msg;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function poll() {
+  try {
+    const d = await (await fetch('/api/poll?since=' + since)).json();
+    since = d.total;
+    for (const e of d.events) {
+      if (e.kind === 'log') appendLog(e.message);
+      else if (e.kind === 'result') addRow(e.record);
+      else if (e.kind === 'progress') setProgress(e.done, e.total);
+    }
+    updateCounts(d.counts);
+    if (d.running) { setTimeout(poll, 400); }
+    else { finish(); }
+  } catch (err) { setTimeout(poll, 1000); }
+}
+
+function finish() {
+  running = false;
+  $('btnStart').disabled = false;
+  $('btnStop').disabled = true;
+  setStatus(t('st.done'));
+}
+
+$('btnStart').onclick = async () => {
+  if (running) return;
+  if (!creds.length) { alert(t('al.noCred')); return; }
+  const ports = $('ports').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  const cfg = {
+    targets: $('targets').value, creds: creds, ports: ports,
+    threads: parseInt($('threads').value) || 12,
+    jump: $('jump').value.trim(), script: $('script').value, lang: LANG
+  };
+  const d = await (await fetch('/api/scan', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
+  })).json();
+  if (!d.ok) { alert(d.msg || t('al.fail')); return; }
+  records = []; since = 0;
+  $('tbody').innerHTML = ''; $('log').innerHTML = '';
+  $('dlLinks').innerHTML = ''; $('dlLinks2').innerHTML = '';
+  running = true;
+  $('btnStart').disabled = true; $('btnStop').disabled = false;
+  setStatus(t('st.scanning'));
+  document.querySelector('.tab[data-p="log"]').click();
+  poll();
+};
+
+$('btnStop').onclick = async () => {
+  await fetch('/api/stop', { method: 'POST' });
+  $('btnStop').disabled = true;
+  setStatus(t('st.stopping'));
+};
+
+$('btnQuit').onclick = async () => {
+  if (running && !confirm(t('al.quit'))) return;
+  try { await fetch('/api/quit', { method: 'POST' }); } catch (e) {}
+  window.close();
+  document.body.innerHTML = '<div class="wrap"><div class="panel">' +
+    esc(LANG === 'zh' ? '程序已退出，可以关闭此标签页。' : 'Application exited. You may close this tab.') +
+    '</div></div>';
+};
+
+async function doExport() {
+  const dir = $('outdir').value.trim();
+  const d = await (await fetch('/api/export', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dir: dir, lang: LANG })
+  })).json();
+  if (!d.ok) { alert(d.msg || t('al.fail')); return; }
+  let h = t('dl.saved') + esc(d.dir) + '　';
+  d.files.forEach(f => {
+    h += ' <a href="/api/download?name=' + encodeURIComponent(f.name) + '">' + esc(f.label) + '</a>';
+  });
+  $('dlLinks').innerHTML = h;
+  $('dlLinks2').innerHTML = h;
+  alert(t('al.exported') + d.dir);
+}
+$('btnExport').onclick = doExport;
+$('btnExport2').onclick = doExport;
+
+$('btnClear').onclick = () => {
+  if (running) { alert(t('al.runningClear')); return; }
+  records = []; $('tbody').innerHTML = '';
+  $('c-vuln').textContent = $('c-safe').textContent = $('c-unknown').textContent = $('c-error').textContent = 0;
+};
+
+applyLang();
+</script>
+</body>
+</html>
